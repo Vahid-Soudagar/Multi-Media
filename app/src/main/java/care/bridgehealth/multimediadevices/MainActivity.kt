@@ -1,6 +1,10 @@
 package care.bridgehealth.multimediadevices
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Bundle
@@ -8,7 +12,9 @@ import android.util.Log
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Button
 import android.widget.Spinner
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -19,8 +25,9 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 class MainActivity : AppCompatActivity() {
 
     private lateinit var usbManager: UsbManager
-    private lateinit var usbDeviceSpinner: Spinner
-    private var usbDevices: List<UsbSerialDriver> = listOf()
+    private lateinit var usbDeviceList: List<UsbDevice>
+    private lateinit var spinner: Spinner
+    private lateinit var button: Button
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,40 +35,33 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        usbDeviceSpinner = findViewById(R.id.usbDeviceSpinner)
+        spinner = findViewById(R.id.usbDeviceSpinner)
+        button = findViewById(R.id.button)
 
-        listUsbDevices()
-        setupSpinner()
+        val usbPermissionIntent = PendingIntent.getBroadcast(this, 0, Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE)
+        val filter = IntentFilter(ACTION_USB_PERMISSION)
+        registerReceiver(usbReceiver, filter)
 
-    }
+        usbDeviceList = getConnectedUsbDevices()
+        val deviceNames = usbDeviceList.map { it.deviceName }
 
-    private fun listUsbDevices() {
-        val availableDrivers = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
-        usbDevices = availableDrivers
-
-        if (availableDrivers.isEmpty()) {
-            Log.e("MainActivity", "No USB devices found")
-            return
-        }
-
-        val deviceNames = availableDrivers.map { it.device.deviceName }
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, deviceNames)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        usbDeviceSpinner.adapter = adapter
-    }
+        spinner.adapter = adapter
 
-    private fun setupSpinner() {
-        usbDeviceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, view: View, position: Int, id: Long) {
-                val selectedDevice = usbDevices[position].device
-                useUsbDevice(selectedDevice)
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>) {
-                // Do nothing
-            }
+        button.setOnClickListener {
+            val selectedDeviceName = spinner.selectedItem as String
+            Toast.makeText(this, "Selected USB Device: $selectedDeviceName", Toast.LENGTH_SHORT).show()
         }
+
     }
+
+    private fun getConnectedUsbDevices(): List<UsbDevice> {
+        val deviceList = usbManager.deviceList
+        return deviceList.values.toList()
+    }
+
+
 
     private fun useUsbDevice(device: UsbDevice) {
         Log.i("MainActivity", "Selected USB Device:")
@@ -71,4 +71,26 @@ class MainActivity : AppCompatActivity() {
         Log.i("MainActivity", "Manufacturer Name: ${device.manufacturerName}")
         Log.i("MainActivity", "Product Name: ${device.productName}")
     }
+
+    companion object {
+        private const val ACTION_USB_PERMISSION = "com.example.USB_PERMISSION"
+    }
+
+    private val usbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_USB_PERMISSION) {
+                synchronized(this) {
+                    val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        device?.let {
+                            // Permission granted
+                        }
+                    } else {
+                        // Permission denied
+                    }
+                }
+            }
+        }
+    }
+
 }
